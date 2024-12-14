@@ -3,7 +3,7 @@
     "img_resolution": 256,
     "in_channels": 3,
     "out_channels": 6,
-    "label_dim": 0,
+    "label_dim": 1,
     "augment_dim": 0,
     "model_channels": 32,
     "channel_mult": [
