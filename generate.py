@@ -159,8 +159,6 @@ def main(arg):
                 x0 = traj_uncond[-1]
                 uncond_straightness = straightness(traj_uncond)
                 straightness_list.append(uncond_straightness.item())
-            elif arg.solver=='dpm':
-                x0=rectified_flow.sample_dmp_solver(z1=z)
             else:
                 x0, nfe = rectified_flow.sample_ode_generative_bbox_y(z1=z, N=arg.N, use_tqdm = False, solver = arg.solver, atol = arg.atol, rtol = arg.rtol,y=y)
                 nfes.append(nfe)
