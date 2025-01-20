@@ -6,7 +6,7 @@ python train_reverse_img_ddp.py --gpu 0 --dir ./runs/cifar10-beta1/ --weight_pri
 ```
 # Generate cifar-10
 ```bash
-python generate.py --gpu 0,1 --dir runs/cifa10_HABR_rk45 --solver RK45  --res 32 --input_nc 3 --num_samples 50000 --ckpt ./runs/cifar10-beta1/flow_model_420000_ema.pth --config_de  ./configs/cifar10_de.json --batchsize 1024   --config_en  ./configs/cifar10_en.json  --encoder ./runs/cifar10-beta1/forward_model_420000_ema.pth 
+python generate.py --gpu 0,1 --dir runs/cifa10_HABR_rk45 --solver RK45  --res 32 --input_nc 3 --num_samples 50000 --ckpt ./runs/cifar10-beta1/flow_model_360000_ema.pth --config_de  ./configs/cifar10_de.json --batchsize 1024   --config_en  ./configs/cifar10_en.json  --encoder ./runs/cifar10-beta1/forward_model_360000_ema.pth 
 ```
 
 # Acknowledgements
