@@ -53,3 +53,32 @@ class DatasetWithLatent(Dataset):
         latent = np.load(latent_name)
         latent = torch.tensor(latent, dtype=torch.float32)
         return img, latent
+    
+class TinyImageNetTrainDataset(Dataset):
+    def __init__(self, size,root_dir, transform=None):
+
+        self.size = size
+        self.root_dir = root_dir
+        self.transform = transform
+        self.classes = os.listdir(root_dir)  
+        self.class_to_idx = {cls: idx for idx, cls in enumerate(self.classes)}  
+        
+
+        self.image_paths = []
+        self.labels = []
+        for cls in self.classes:
+            cls_dir = os.path.join(root_dir, cls, 'images')
+            img_files = glob.glob(os.path.join(cls_dir, '*.JPEG'))+ glob.glob(os.path.join(cls_dir, '*.png')) 
+            self.image_paths.extend(img_files)
+            self.labels.extend([self.class_to_idx[cls]] * len(img_files))
+
+    def __len__(self):
+        return len(self.image_paths)
+
+    def __getitem__(self, idx):
+        img_path = self.image_paths[idx]
+        label = self.labels[idx]
+        image = Image.open(img_path).convert('RGB')  
+        if self.transform:
+            image = self.transform(image)
+        return image, label
