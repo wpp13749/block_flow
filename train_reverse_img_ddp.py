@@ -12,7 +12,7 @@ import torchvision.datasets as dsets
 from torchvision import transforms
 from torchvision.utils import save_image, make_grid
 from utils import straightness, get_kl ,get_kl_y,get_kl_y_mu_y_1
-from dataset import CelebAHQImgDataset
+from dataset import CelebAHQImgDataset,TinyImageNetTrainDataset
 import argparse
 from tqdm import tqdm
 import json 
@@ -40,7 +40,7 @@ def ddp_setup(rank, world_size):
         world_size: Total number of processes
     """
     os.environ["MASTER_ADDR"] = "localhost"
-    os.environ["MASTER_PORT"] = "4950"
+    os.environ["MASTER_PORT"] = "2450"
     # os.environ["MASTER_PORT"] = str(find_free_port())
     # Windows
     # init_process_group(backend="gloo", rank=rank, world_size=world_size)
@@ -70,7 +70,7 @@ def get_args():
 
     arg = parser.parse_args()
 
-    assert arg.dataset in ['cifar10', 'mnist', 'celebahq', 'celebahq256', 'ffhq', 'afhq']
+    assert arg.dataset in ['cifar10', 'mnist', 'celebahq', 'celebahq256', 'ffhq', 'afhq','Tiny_imagenet']
     arg.use_ema = not arg.no_ema
     return arg
 
@@ -91,10 +91,12 @@ def train_rectified_flow(rank, rectified_flow, forward_model, optimizer, data_lo
             for param_group in optimizer.param_groups:
                 param_group['lr'] = learning_rate * np.minimum(i / warmup_steps, 1)
         try:
-            x, y = train_iter.next()
+            x, y = next(train_iter)
+            # x, y = train_iter.next()
         except:
             train_iter = iter(data_loader)
-            x, y = train_iter.next()
+            x, y = next(train_iter) 
+            # x, y = train_iter.next()
         x = x.to(device)
         y = y.to(device)
 
@@ -103,7 +105,7 @@ def train_rectified_flow(rank, rectified_flow, forward_model, optimizer, data_lo
             loss_prior = 0
             loss_prior_y=0
         else:
-            z, mu, logvar = forward_model(x, torch.ones((x.shape[0]), device=device),y=y,x_dropout=1)
+            z, mu, logvar = forward_model(None, torch.ones((x.shape[0]), device=device),y=y)
             # _,mu_un,logvar_un=forward_model(x, torch.ones((x.shape[0]), device=device))
             
             # loss_prior_y=get_kl_y(mu_un,logvar_un,mu, logvar)
@@ -119,7 +121,7 @@ def train_rectified_flow(rank, rectified_flow, forward_model, optimizer, data_lo
         loss_fm = torch.mean((target - pred)**2)
         loss_fm = loss_fm.mean()
         #loss_prior_y = torch.mean(torch.abs(logvar))(FANR)
-        loss_prior = get_kl(mu, logvar)
+        loss_prior =get_kl(mu, logvar)
         loss = loss_fm + weight_prior * loss_prior
         
         loss.backward()
@@ -128,66 +130,66 @@ def train_rectified_flow(rank, rectified_flow, forward_model, optimizer, data_lo
         
         
 
-        if i % 100 == 0 and rank == 0:
-            print(f"Iteration {i}: loss {loss.item()}, loss_fm {loss_fm.item()}, loss_prior {loss_prior.item()}")
+        # if i % 100 == 0 and rank == 0:
+        #     print(f"Iteration {i}: loss {loss.item()}, loss_fm {loss_fm.item()}, loss_prior {loss_prior.item()}")
             
-            # 记录到 TensorBoard
-            writer.add_scalar("loss", loss.item(), i)
-            writer.add_scalar("loss_fm", loss_fm.item(), i)
-            writer.add_scalar("loss_prior", loss_prior, i)
-            # writer.add_scalar("loss_prior_y", loss_prior_y, i)
-            # writer.add_scalar("lr", optimizer.param_groups[0]['lr'], i)
-            # writer.add_scalar("loss_fm_ratio", loss_fm_ratio, i)
+        #     # 记录到 TensorBoard
+        #     writer.add_scalar("loss", loss.item(), i)
+        #     writer.add_scalar("loss_fm", loss_fm.item(), i)
+        #     writer.add_scalar("loss_prior", loss_prior, i)
+        #     # writer.add_scalar("loss_prior_y", loss_prior_y, i)
+        #     # writer.add_scalar("lr", optimizer.param_groups[0]['lr'], i)
+        #     # writer.add_scalar("loss_fm_ratio", loss_fm_ratio, i)
             
-            with open(os.path.join(dir, 'log.txt'), 'a') as f:
-                f.write(f"Iteration {i}: loss {loss.item():.8f}, loss_fm {loss_fm.item():.8f}, loss_prior {loss_prior.item():.8f}\n")
+        #     with open(os.path.join(dir, 'log.txt'), 'a') as f:
+        #         f.write(f"Iteration {i}: loss {loss.item():.8f}, loss_fm {loss_fm.item():.8f}, loss_prior {loss_prior.item():.8f}\n")
 
-        if i % 3000 == 1 and rank == 0:
-            rectified_flow.model.eval()
-            if use_ema:
-                optimizer.swap_parameters_with_ema(store_params_in_ema=True)
+        # if i % 300 == 1 and rank == 0:
+        #     rectified_flow.model.eval()
+        #     if use_ema:
+        #         optimizer.swap_parameters_with_ema(store_params_in_ema=True)
 
-            with torch.no_grad():
-                if independent:
-                    z = torch.randn_like(x[:4])
-                else:
-                    y = torch.randint(0, 10, (4,), device=device)
-                    z_y, _, _ = forward_model(None, torch.ones((4), device=device),y=y,x_dropout=1)
-                traj_reverse, traj_reverse_x0 = rectified_flow.sample_ode_generative_y(z1=z_y, N=sampling_steps,y=y)
+        #     with torch.no_grad():
+        #         if independent:
+        #             z = torch.randn_like(x[:4])
+        #         else:
+        #             y = torch.randint(0, 10, (4,), device=device)
+        #             z_y, _, _ = forward_model(None, torch.ones((4), device=device),y=y,x_dropout=1)
+        #         traj_reverse, traj_reverse_x0 = rectified_flow.sample_ode_generative_y(z1=z_y, N=sampling_steps,y=y)
 
-                # z = torch.randn_like(x)[:4]
+        #         # z = torch.randn_like(x)[:4]
                 
-                # traj_uncond, traj_uncond_x0 = rectified_flow.sample_ode_generative_y(z1=z, N=sampling_steps,y=y)
-                # traj_y_N4, traj_y_x0_N4 = rectified_flow.sample_ode_generative_y(z1=z_y, N=4,y=y)
-                # traj_forward = rectified_flow.sample_ode(z0=samples_test, N=sampling_steps)
+        #         # traj_uncond, traj_uncond_x0 = rectified_flow.sample_ode_generative_y(z1=z, N=sampling_steps,y=y)
+        #         # traj_y_N4, traj_y_x0_N4 = rectified_flow.sample_ode_generative_y(z1=z_y, N=4,y=y)
+        #         # traj_forward = rectified_flow.sample_ode(z0=samples_test, N=sampling_steps)
 
-                # uncond_straightness = straightness(traj_uncond)
-                reverse_straightness = straightness(traj_reverse)
+        #         # uncond_straightness = straightness(traj_uncond)
+        #         reverse_straightness = straightness(traj_reverse)
 
-                # print(f"Uncond straightness: {uncond_straightness.item()}, reverse straightness: {reverse_straightness.item()}")
-                # writer.add_scalar("uncond_straightness", uncond_straightness.item(), i)
-                writer.add_scalar("reverse_straightness", reverse_straightness.item(), i)
+        #         # print(f"Uncond straightness: {uncond_straightness.item()}, reverse straightness: {reverse_straightness.item()}")
+        #         # writer.add_scalar("uncond_straightness", uncond_straightness.item(), i)
+        #         writer.add_scalar("reverse_straightness", reverse_straightness.item(), i)
 
-                traj_reverse = torch.cat(traj_reverse, dim=0)
-                traj_reverse_x0 = torch.cat(traj_reverse_x0, dim=0)
-                # traj_forward = torch.cat(traj_forward, dim=0)
-                # traj_uncond = torch.cat(traj_uncond, dim=0)
-                # traj_uncond_x0 = torch.cat(traj_uncond_x0, dim=0)
-                # traj_y_N4 = torch.cat(traj_y_N4, dim=0)
-                # traj_y_x0_N4 = torch.cat(traj_y_x0_N4, dim=0)
+        #         traj_reverse = torch.cat(traj_reverse, dim=0)
+        #         traj_reverse_x0 = torch.cat(traj_reverse_x0, dim=0)
+        #         # traj_forward = torch.cat(traj_forward, dim=0)
+        #         # traj_uncond = torch.cat(traj_uncond, dim=0)
+        #         # traj_uncond_x0 = torch.cat(traj_uncond_x0, dim=0)
+        #         # traj_y_N4 = torch.cat(traj_y_N4, dim=0)
+        #         # traj_y_x0_N4 = torch.cat(traj_y_x0_N4, dim=0)
 
-                save_image(traj_reverse*0.5 + 0.5, os.path.join(dir, f"traj_reverse_{i}.jpg"), nrow=4)
-                save_image(traj_reverse_x0*0.5 + 0.5, os.path.join(dir, f"traj_reverse_x0_{i}.jpg"), nrow=4)
-                # save_image(traj_forward*0.5 + 0.5, os.path.join(dir, f"traj_forward_{i}.jpg"), nrow=4)
-                # save_image(traj_uncond*0.5 + 0.5, os.path.join(dir, f"traj_uncond_{i}.jpg"), nrow=4)
-                # save_image(traj_uncond_x0*0.5 + 0.5, os.path.join(dir, f"traj_uncond_x0_{i}.jpg"), nrow=4)
-                # save_image(traj_y_N4*0.5 + 0.5, os.path.join(dir, f"traj_uncond_N4_{i}.jpg"), nrow=4)
-                # save_image(traj_y_x0_N4*0.5 + 0.5, os.path.join(dir, f"traj_uncond_x0_N4_{i}.jpg"), nrow=4)
-            if use_ema:
-                optimizer.swap_parameters_with_ema(store_params_in_ema=True)
-            rectified_flow.model.train()
+        #         save_image(traj_reverse*0.5 + 0.5, os.path.join(dir, f"traj_reverse_{i}.jpg"), nrow=4)
+        #         save_image(traj_reverse_x0*0.5 + 0.5, os.path.join(dir, f"traj_reverse_x0_{i}.jpg"), nrow=4)
+        #         # save_image(traj_forward*0.5 + 0.5, os.path.join(dir, f"traj_forward_{i}.jpg"), nrow=4)
+        #         # save_image(traj_uncond*0.5 + 0.5, os.path.join(dir, f"traj_uncond_{i}.jpg"), nrow=4)
+        #         # save_image(traj_uncond_x0*0.5 + 0.5, os.path.join(dir, f"traj_uncond_x0_{i}.jpg"), nrow=4)
+        #         # save_image(traj_y_N4*0.5 + 0.5, os.path.join(dir, f"traj_uncond_N4_{i}.jpg"), nrow=4)
+        #         # save_image(traj_y_x0_N4*0.5 + 0.5, os.path.join(dir, f"traj_uncond_x0_N4_{i}.jpg"), nrow=4)
+        #     if use_ema:
+        #         optimizer.swap_parameters_with_ema(store_params_in_ema=True)
+        #     rectified_flow.model.train()
 
-        if i % 20000 == 0 and rank == 0:
+        if i % 40000 == 0 and rank == 0:
             if use_ema:
                 optimizer.swap_parameters_with_ema(store_params_in_ema=True)
                 torch.save(rectified_flow.model.module.state_dict(), os.path.join(dir, f"flow_model_{i}_ema.pth"))
@@ -207,7 +209,7 @@ def train_rectified_flow(rank, rectified_flow, forward_model, optimizer, data_lo
             d['iter'] = i
             # save
             torch.save(d, os.path.join(dir, f"training_state_{i}.pth"))  
-        if i % 1000 == 0 and rank == 0 and i > 0:
+        if i % 10000 == 0 and rank == 0 and i > 0:
             # Save the latest training state
             d = {}
             d['optimizer_state_dict'] = optimizer.state_dict()
@@ -244,8 +246,8 @@ def get_loader(dataset, batchsize, world_size, rank):
                                     transforms.RandomHorizontalFlip(),
                                     transforms.ToTensor(),
                                     transforms.Normalize([0.5], [0.5])])
-        dataset_train = CelebAHQImgDataset(res, im_dir = '../data/CelebAMask-HQ/CelebA-HQ-img-train-64', transform = transform)
-        dataset_test = CelebAHQImgDataset(res, im_dir = '../data/CelebAMask-HQ/CelebA-HQ-img-test-64', transform = transform)
+        dataset_train = TinyImageNetTrainDataset(res, root_dir = '/home/zbwang/celeb-a-hq-kmeans-64/train', transform = transform)
+        # dataset_test = CelebAHQImgDataset(res, im_dir = '../data/CelebAMask-HQ/CelebA-HQ-img-test-64', transform = transform)
     elif dataset == 'celebahq256':
         input_nc = 3
         res = 256
@@ -262,8 +264,18 @@ def get_loader(dataset, batchsize, world_size, rank):
                                     transforms.RandomHorizontalFlip(),
                                     transforms.ToTensor(),
                                     transforms.Normalize([0.5], [0.5])])
-        dataset_train = CelebAHQImgDataset(res, im_dir = '/mnt/hdd-nfs/sangyun/FFHQ_64', transform = transform)
-        dataset_test = CelebAHQImgDataset(res, im_dir = '/mnt/hdd-nfs/sangyun/FFHQ_64_test', transform = transform)
+        dataset_train = TinyImageNetTrainDataset(res, root_dir = '/home/zbwang/block_data/clustered_images/', transform = transform)
+        # dataset_test = TinyImageNetTrainDataset(res, root_dir = '/root/data/Tiny_imagenet/tiny-imagenet-200/test/', transform = transform)
+    elif dataset == 'Tiny_imagenet':
+        input_nc = 3
+        res = 64
+        transform = transforms.Compose([transforms.Resize((res, res)),
+                                    transforms.RandomHorizontalFlip(),
+                                    transforms.ToTensor(),
+                                    transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
+                                    ])
+        dataset_train = TinyImageNetTrainDataset(res, root_dir = '/home/zbwang/data/tiny-imagenet-200/train/', transform = transform)
+        # dataset_test = TinyImageNetTrainDataset(res, root_dir = '/root/data/Tiny_imagenet/tiny-imagenet-200/test/', transform = transform)
     elif dataset == 'afhq':
         input_nc = 3
         res = 64
@@ -299,11 +311,12 @@ def get_loader(dataset, batchsize, world_size, rank):
                                             drop_last=True,
                                             num_workers=4,
                                             sampler = DistributedSampler(dataset_train, num_replicas=world_size, rank=rank))
-    data_loader_test = torch.utils.data.DataLoader(dataset=dataset_test,
-                                                batch_size=batchsize,
-                                                shuffle=False,
-                                                drop_last=True)
-    samples_test = next(iter(data_loader_test))[0][:4]
+    # data_loader_test = torch.utils.data.DataLoader(dataset=dataset_test,
+    #                                             batch_size=batchsize,
+    #                                             shuffle=False,
+    #                                             drop_last=True)
+    # samples_test = next(iter(data_loader_test))[0][:4]
+    samples_test = 0
     return data_loader, samples_test, res, input_nc
 
 def parse_config(config_path):
