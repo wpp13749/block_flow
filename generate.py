@@ -145,7 +145,6 @@ def main(arg):
                 #     0.087458955
                 # ], device=device) 
 
-                # 归一化处理（虽然原概率和接近1，但显式归一化更安全）
                 probs = probabilities / probabilities.sum()
                 # y = torch.multinomial(
                 #     input = probs,              
