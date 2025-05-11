@@ -145,7 +145,7 @@ def main(arg):
                 #     0.087458955
                 # ], device=device) 
 
-                probs = probabilities / probabilities.sum()
+                # probs = probabilities / probabilities.sum()
                 # y = torch.multinomial(
                 #     input = probs,              
                 #     num_samples = arg.batchsize, 
