@@ -136,14 +136,23 @@ def main(arg):
             noise = torch.randn(arg.batchsize, arg.input_nc, arg.res, arg.res).to(device)
             save_image(noise, "debug1.jpg")
             if arg.encoder is not None:
-                # x, _= next(train_iter)
-                # x = x.to(device)
-                # x = x[1].repeat(arg.batchsize, 1, 1, 1)
-                # noise = noise[1].repeat(arg.batchsize, 1, 1, 1)
                 y = torch.randint(0, 10, (arg.batchsize,), device=device)
-                # y = torch.arange(0, arg.batchsize, device=device)
-                # z, _, _ = forward_model(None, noise = noise,y=y)#可以不使用x
-                z, _, _ = forward_model(None, noise = noise,y=y)#可以不使用x
+                # # When clustering methods are used to generate synthetic labels (0–9), the distribution of p(y) can be defined according to the percentage composition of each class.
+                # probabilities = torch.tensor([
+                #     0.073549515, 0.133344607, 0.065136205,
+                #     0.081554137, 0.101340211, 0.106004876,
+                #     0.146605786, 0.11002128, 0.094984428,
+                #     0.087458955
+                # ], device=device) 
+
+                # 归一化处理（虽然原概率和接近1，但显式归一化更安全）
+                probs = probabilities / probabilities.sum()
+                # y = torch.multinomial(
+                #     input = probs,              
+                #     num_samples = arg.batchsize, 
+                #     replacement = True          
+                # )
+                z, _, _ = forward_model(None, noise = noise,y=y)
                 # print(y)
                 # print('mu:',mu.mean(dim=(1, 2, 3)))
                 # print('logvar:',logvar.mean(dim=(1, 2, 3)))
