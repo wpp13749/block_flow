@@ -70,5 +70,35 @@ After completing dataset clustering, you can start training the FFHQ model:
 python train_reverse_img_ddp.py --gpu 0,1,2,3,4,5,6,7 --dir runs/ffhq-beta20 --weight_prior 1 --learning_rate 2e-4 --dataset ffhq --warmup_steps 40000 --batchsize 256 --iterations 800000 --config_en configs/ffhq_en.json --config_de configs/ffhq_de.json
 ```
 
+#### 3.3 FFHQ Image Generation
+For FFHQ image generation, you can use the following command:
+```bash
+python generate.py  --gpu 0,1,2,3 --dir runs/ffhq_FABR_10_N100  --res 64 --input_nc 3 --num_samples 50000  --ckpt ./runs/ffhq-10/flow_model_800000_ema.pth  --config_de  ./configs/ffhq_de.json --batchsize 512    --config_en ./configs/ffhq_en.json  --encoder ./runs/ffhq-10/forward_model_800000_ema.pth    --N 100
+```
+
+Note: When generating images, you need to modify the sampling strategy in `generate.py`. Replace the uniform sampling code:
+```python
+y = torch.randint(0, 10, (arg.batchsize,), device=device)
+```
+with non-uniform sampling code based on the class distribution from clustering results:
+```python
+# When clustering methods are used to generate synthetic labels (0–9), 
+# the distribution of p(y) can be defined according to the percentage composition of each class.
+probabilities = torch.tensor([
+    0.073549515, 0.133344607, 0.065136205,
+    0.081554137, 0.101340211, 0.106004876,
+    0.146605786, 0.11002128, 0.094984428,
+    0.087458955
+], device=device)
+
+probs = probabilities / probabilities.sum()
+y = torch.multinomial(
+    input = probs,              
+    num_samples = arg.batchsize, 
+    replacement = True          
+)
+```
+These probabilities can be adjusted based on your specific requirements.
+
 ## Acknowledgements
 Thanks to [fast_ode](https://github.com/sangyun884/fast-ode) and [EDM](https://github.com/nvlabs/edm) for providing their implementations, which have significantly contributed to this codebase. 
